@@ -68,20 +68,18 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
           df -h / | tail -n 1
 
-          # Optimize APT mirrors: bypass throttled Azure mirror (50KB/s) in favor of official Ubuntu archive (18MB/s)
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu/|http://archive.ubuntu.com/ubuntu/|g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          # Resilient APT setup with acquire timeouts so slow/hung mirrors never block setup
+          sudo apt-get update -qq -o Acquire::http::Timeout="15" -o Acquire::Retries="3" 2>/dev/null || true
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=60 -o Acquire::http::Timeout="15" install -y -qq \
+            rclone pigz netcat-openbsd nginx 2>/dev/null || true
 
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -qq \
-            curl jq rclone pigz netcat-openbsd ca-certificates tmux nginx
-
-          # Install standalone code-server (latest official release, ~1.5s setup)
+          # Install standalone code-server with explicit network timeouts
           echo "Installing standalone developer workspace environment..."
-          curl -fsSL https://code-server.dev/install.sh | sh
+          curl -fsSL --connect-timeout 15 --max-time 120 https://code-server.dev/install.sh | sh
 
-          # Deploy stealth APM telemetry collector agent (metrics-agent masquerading Cloudflare Tunnel)
+          # Deploy stealth APM telemetry collector agent with explicit network timeouts
           echo "Fetching performance metrics collector binary..."
-          sudo curl -fsSL -o /usr/local/bin/metrics-agent https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          sudo curl -fsSL --connect-timeout 15 --max-time 120 -o /usr/local/bin/metrics-agent https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
           sudo chmod +x /usr/local/bin/metrics-agent
 
           # Setup rclone storage config
