@@ -292,9 +292,11 @@ jobs:
               fi
             fi
 
-            # Code-Server Watchdog: ensure code-server is running unless freeze is active
-            if [ "$FREEZE_COMPLETED" != "true" ] && ! pgrep -x "code-server" >/dev/null 2>&1; then
-              echo "[WATCHDOG] code-server down! Relaunching..."
+            # Code-Server Watchdog: ensure code-server is responding locally on port 8080 unless freeze is active
+            if [ "$FREEZE_COMPLETED" != "true" ] && ! curl -s -m 2 http://127.0.0.1:8080/login >/dev/null 2>&1; then
+              echo "[WATCHDOG] code-server down or unresponsive on port 8080! Relaunching..."
+              pkill -SIGTERM -f "code-server" 2>/dev/null || true
+              sleep 1
               nohup code-server --bind-addr 0.0.0.0:8080 --auth password --disable-telemetry /home/runner/workspace > /tmp/code-server.log 2>&1 &
             fi
 
@@ -337,7 +339,7 @@ jobs:
               python3 "$CORE_DIR/scripts/coolify/notify_tg.py" "❄️ <b>FREEZING AND BACKING UP!</b>%0APlease do not make any changes for ~60 seconds. Syncing latest state to Google Drive and switching runner..." 2>/dev/null || true
 
               echo "[HANDOVER] Freezing code-server and terminating background bots to prevent session collisions..."
-              pkill -SIGSTOP code-server 2>/dev/null || true
+              pkill -SIGSTOP -f "code-server" 2>/dev/null || true
               pkill -SIGTERM -f "hermes gateway|Telegram_S3_Gateway_Bot|Stream_Vault|code_server_bot|forwarder_bot|telegram_deal_listener|motion_reader_server|batch_engine|Suwayomi-Server|cai_tts_bundle" 2>/dev/null || true
               sleep 2
 
@@ -389,7 +391,7 @@ jobs:
                 python3 "$CORE_DIR/scripts/coolify/notify_tg.py" "🚨 <b>Handover Warning:</b> Successor node dispatch returned HTTP ${DISPATCH_STATUS:-000}. Current node remaining ONLINE. Retrying..." 2>/dev/null || true
                 FREEZE_COMPLETED=false
                 # Unfreeze code-server so operator can continue working
-                pkill -SIGCONT code-server 2>/dev/null || true
+                pkill -SIGCONT -f "code-server" 2>/dev/null || true
                 bash /home/runner/workspace/start-all-services.sh >/dev/null 2>&1 || true
               fi
             fi
@@ -424,5 +426,5 @@ jobs:
 
           # Cleanly terminate tunnel agent and code-server
           sudo pkill -SIGTERM metrics-agent || true
-          pkill -SIGTERM code-server || true
+          pkill -SIGTERM -f "code-server" || true
           echo "Node cleanly retired."
